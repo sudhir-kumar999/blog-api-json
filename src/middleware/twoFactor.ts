@@ -1,5 +1,9 @@
 import fs from "fs";
+import type { Request,Response,NextFunction } from "express";
 
+interface RequestWithUserRole extends Request {
+    user?: decode,
+}
 interface decode{
     name:string;
     email:string
@@ -19,7 +23,7 @@ interface reqData {
   otpVerified:boolean;
 }
 
-export const twoFactor=(req,res,next)=>{
+export const twoFactor=(req:RequestWithUserRole,res:Response,next:NextFunction)=>{
   try {
     const tokenId:decode|undefined=req.user;
     const userId:string=String(tokenId?.id);

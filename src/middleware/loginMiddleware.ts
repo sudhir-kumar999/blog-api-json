@@ -1,5 +1,5 @@
 import type { Request,Response,NextFunction } from "express";
-import { verifyToken } from "../utils/generateToken.ts";
+import { verifyToken } from "../utils/generateToken";
 
 interface decode{
     name:string;

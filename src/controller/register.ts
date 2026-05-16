@@ -2,17 +2,25 @@
 import { type Request, type Response } from "express";
 import fs from "fs";
 import bcrypt from "bcrypt";
-import { v4 as uuidv4 } from "uuid";
+// import { v4 as uuidv4 } from "uuid";
 import {
   generateAccessToken,
   generateRefreshToken,
-} from "../utils/generateToken.ts";
+} from "../utils/generateToken";
 import dotenv from "dotenv";
 dotenv.config();
-import { sendMail } from "../utils/emailSend.ts";
-import { generateOtp } from "../utils/otp.ts";
-import { Webhook } from "discord-webhook-node";
-const hook = new Webhook(process.env.DISCORD_WEBHOOK);
+import { sendMail } from "../utils/emailSend";
+import { generateOtp } from "../utils/otp";
+import { AppDataSource } from "../config/data-source";
+import { User } from "../entity/User";
+import { Otp } from "../entity/Otp";
+// import { Blog } from "../entity/Blog";
+const userRepo = AppDataSource.getRepository(User);
+const otpRepo = AppDataSource.getRepository(Otp);
+// const blogRepo = AppDataSource.getRepository(Blog);
+
+// import { Webhook } from "discord-webhook-node";
+// const hook = new Webhook(process.env.DISCORD_WEBHOOK);
 
 interface reqData {
   id: string;
@@ -44,14 +52,14 @@ interface body {
 const stringRegex = /^[A-Za-z ]+$/;
 const passRegex = /^(?=.*\d)(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z]).{8,}$/;
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-interface otp {
-  email: string;
-  otp: string;
-  attempt: number;
-  isVerified: boolean;
-  createdAt: number;
-  expiredAt: number;
-}
+// interface otp {
+//   email: string;
+//   otp: string;
+//   attempt: number;
+//   isVerified: boolean;
+//   createdAt: number;
+//   expiredAt: number;
+// }
 
 interface valid {
   email: string;
@@ -110,7 +118,7 @@ export const getData = (req: Request, res: Response) => {
 
 export const postData = async (req: RequestWithUserRole, res: Response) => {
   try {
-    const remaining = res.getHeader("RateLimit-Remaining");
+    // const remaining = res.getHeader("RateLimit-Remaining");
     const bodyData: reqData = req.body;
     let { name, age, email, password, place, city }: reqData = req.body;
 
@@ -127,7 +135,7 @@ export const postData = async (req: RequestWithUserRole, res: Response) => {
         message: "ever field is required for register",
       });
     }
-    const now = new Date().toTimeString();
+    // const now = new Date().toTimeString();
 
     if (!passRegex.test(password)) {
       return res.status(400).json({
@@ -181,7 +189,7 @@ export const postData = async (req: RequestWithUserRole, res: Response) => {
     city = city?.trim();
     place = place?.trim();
     email = email?.trim().toLowerCase();
-    bodyData.email=email;
+    bodyData.email = email;
     if (!name) {
       return res.status(400).json({
         success: false,
@@ -205,43 +213,26 @@ export const postData = async (req: RequestWithUserRole, res: Response) => {
 
     const strPassword = password.toString();
     const hashed = await bcrypt.hash(strPassword, 10);
-    const id = uuidv4();
-    bodyData.id = id;
     bodyData.password = hashed;
-    const path = "data.json";
-    if (!fs.existsSync(path)) {
-      fs.writeFileSync("path", "");
-    }
-    fs.readFile("data.json", "utf-8", (err, data) => {
-      let pushData: reqData[] = [];
-      if (!err && data) {
-        pushData = JSON.parse(data);
-      }
-      const check = pushData.some((ele: reqData) => ele.email == email);
-      if (check) {
-        const str = `Hello ${bodyData.email} you are already signed in. Please Log in to continue. Thank you`;
-        hook.send(str);
-        return res.status(409).json({
-          success: false,
-          message: "Email already exist try with new email",
-          attemptLeft: remaining,
-        });
-      }
-      pushData.push(bodyData);
-      const str2 = `Hello ${bodyData.name} you are sign up on our website with your Email : ${bodyData.email} at time ${now}. Now you can log in. This is system generated message do not reply`;
-      hook.send(str2);
-      fs.writeFile("data.json", JSON.stringify(pushData), (err) => {
-        if (err) {
-          return res.status(500).json({
-            success: false,
-            message: err.message || "error occurred at writing file",
-          });
-        }
-        return res.status(201).json({
-          success: true,
-          message: "user created in json file successfully",
-        });
+
+    let checkUser = await userRepo.findOne({
+      where: {
+        email,
+      },
+    });
+    // console.log(checkUser)
+    if (checkUser) {
+      return res.status(409).json({
+        success: false,
+        message: "user already exists",
       });
+    }
+    let res2 = await userRepo.save(bodyData);
+    console.log(res2);
+
+    return res.status(201).json({
+      success: false,
+      message: "user created successfuly",
     });
   } catch (error: unknown) {
     if (error instanceof Error) {
@@ -253,7 +244,10 @@ export const postData = async (req: RequestWithUserRole, res: Response) => {
   }
 };
 
-export const loginController = (req: RequestWithUserRole, res: Response) => {
+export const loginController = async (
+  req: RequestWithUserRole,
+  res: Response,
+) => {
   try {
     let { email, password }: valid = req.body;
     if (email == undefined || password == undefined) {
@@ -270,82 +264,76 @@ export const loginController = (req: RequestWithUserRole, res: Response) => {
       });
     }
 
-    fs.readFile("data.json", "utf-8", async (err, data) => {
-      if (!data) {
-        return res.status(404).json({
-          success: false,
-          message: "No data found inside DB",
-        });
-      }
-      let readData: reqData[] = JSON.parse(data);
-      const emailCheck = readData.find((ele) => ele.email == email);
-      const hashed: string = String(emailCheck?.password);
-      if (emailCheck == undefined) {
-        return res.status(401).json({
-          success: false,
-          message: "No email found. kindly sign up or enter right email",
-        });
-      }
-      const isValidPass = await bcrypt.compare(password, hashed);
-      if (!isValidPass) {
-        return res.status(401).json({
-          success: false,
-          message: "Wrong password. Try again with correct password",
-        });
-      }
-
-      const otp = generateOtp();
-      const template = `
+    let userExist = await userRepo.findOne({
+      where: {
+        email,
+      },
+    });
+    if (!userExist) {
+      return res.json({
+        success: false,
+        message: "user not register sign up first",
+      });
+    }
+    const verifyPass = await bcrypt.compare(password, userExist.password);
+    if (!verifyPass) {
+      return res.json({
+        success: false,
+        message: "wrong password entered",
+      });
+    }
+    const otp = generateOtp();
+    const template = `
     <h1>Your otp is ${otp}</h1>
     `;
-      const mailInfo = await sendMail(emailCheck.email, template);
-      if (!mailInfo?.accepted[0]) {
-        return res.status(502).json({
+
+    let optCheck = await otpRepo.findOne({
+      where: {
+        user: {
+          id: userExist.id,
+        },
+      },
+    });
+    console.log("check otp", optCheck);
+
+    if (optCheck) {
+      const currentTime = new Date();
+      const resendTime = new Date(optCheck.createdAt.getTime() + 1 * 60 * 1000);
+      if (currentTime < resendTime) {
+        return res.status(400).json({
           success: false,
-          message: "Failed when send Email",
+          message: `send otp after 2 min`,
         });
       }
-      fs.readFile("otp.json", "utf-8", (err, data) => {
-        let otpData: otp[] = [];
-        if (!err && data) {
-          otpData = JSON.parse(data);
-        }
-
-        const existOtp = otpData.find((ele) => ele.email == emailCheck.email);
-        const curTime = Date.now();
-        if (existOtp) {
-          const time = curTime - existOtp.createdAt;
-          if (time < 2 * 60 * 1000) {
-            return res.status(429).json({
-              success: false,
-              message: "try again after 2 min",
-            });
-          }
-        }
-
-        otpData = otpData.filter((ele) => ele.email != emailCheck.email);
-        const newData: otp = {
-          email: emailCheck.email,
-          otp: String(otp),
-          attempt: 0,
-          isVerified: false,
-          createdAt: curTime,
-          expiredAt: curTime + 10 * 60 * 1000,
-        };
-        otpData.push(newData);
-        fs.writeFile("otp.json", JSON.stringify(otpData), (err) => {
-          if (err) {
-            return res.status(500).json({
-              success: false,
-              message: "error at writing otp to db",
-            });
-          }
-          return res.status(200).json({
-            success: true,
-            message: "otp sent successfully",
-          });
-        });
+      await otpRepo.remove(optCheck);
+    }
+    const mailInfo = await sendMail(userExist.email, template);
+    if (!mailInfo?.accepted[0]) {
+      return res.status(502).json({
+        success: false,
+        message: "Failed when send Email",
       });
+    }
+
+    const otpData = {
+      otp: String(otp),
+      attempt: 0,
+      isVerified: false,
+      user: userExist,
+      expiredAt: new Date(Date.now() + 20 * 60 * 1000),
+    };
+    const otpSave = await otpRepo.create(otpData);
+    await otpRepo.save(otpSave);
+    // console.log(otpSave)
+    if (!otpSave) {
+      return res.status(400).json({
+        success: false,
+        message: "otp sending failed",
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "otp sent successfully",
     });
   } catch (error: unknown) {
     if (error instanceof Error) {
@@ -357,7 +345,7 @@ export const loginController = (req: RequestWithUserRole, res: Response) => {
   }
 };
 
-export const verifyOtp = (req: Request, res: Response) => {
+export const verifyOtp = async (req: Request, res: Response) => {
   try {
     let { email, otp }: body = req.body;
 
@@ -395,159 +383,90 @@ export const verifyOtp = (req: Request, res: Response) => {
     }
     otp = otp.trim();
 
-    fs.readFile("data.json", "utf-8", (err, data) => {
-      if (err) {
-        return res.status(500).json({
-          success: false,
-          message: "error while reading user file",
-        });
-      }
-      let readData: reqData[] = [];
-      if (data) {
-        readData = JSON.parse(data);
-      }
-      const user: reqData | undefined = readData.find(
-        (ele) => ele.email == email,
-      );
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: "no user found",
-        });
-      }
-      fs.readFile("otp.json", "utf-8", (err, data) => {
-        if (err) {
-          return res.status(500).json({
-            success: false,
-            message: "error while reading otp file",
-          });
-        }
-        let otpData: otp[] = [];
-        if (data) {
-          otpData = JSON.parse(data);
-        }
-        const otpUser = otpData.find((ele) => ele.email == user.email);
-        if (!otpUser) {
-          return res.status(404).json({
-            success: false,
-            message: "user not found in otp table",
-          });
-        }
-
-        if (Date.now() > otpUser.expiredAt) {
-          const deleteExpiredOtp = otpData.filter(
-            (ele) => ele.email != otpUser.email,
-          );
-
-          fs.writeFile("otp.json", JSON.stringify(deleteExpiredOtp), () => {});
-
-          return res.status(401).json({
-            success: false,
-            message: "otp expired generate new otp",
-          });
-        }
-
-        if (otpUser.attempt >= 3) {
-          const deleteOtp = otpData.filter((ele) => ele.email != otpUser.email);
-
-          fs.writeFile("otp.json", JSON.stringify(deleteOtp), () => {});
-
-          return res.status(401).json({
-            success: false,
-            message: "no attempt left generate new otp",
-          });
-        }
-
-        if (otpUser.otp != otp) {
-          otpUser.attempt += 1;
-
-          if (otpUser.attempt >= 3) {
-            const deleteOtp = otpData.filter(
-              (ele) => ele.email != otpUser.email,
-            );
-
-            fs.writeFile("otp.json", JSON.stringify(deleteOtp), (err) => {
-              if (err) {
-                return res.status(500).json({
-                  success: false,
-                  message: "error while deleting otp",
-                });
-              }
-
-              return res.status(401).json({
-                success: false,
-                message: "max attempt exceed otp deleted",
-              });
-            });
-
-            return;
-          }
-
-          const updateAttempt = otpData.map((ele) =>
-            ele.email == otpUser.email ? otpUser : ele,
-          );
-
-          fs.writeFile("otp.json", JSON.stringify(updateAttempt), (err) => {
-            if (err) {
-              return res.status(500).json({
-                success: false,
-                message: "error while updating attempt",
-              });
-            }
-
-            return res.status(401).json({
-              success: false,
-              message: `wrong otp attempt left ${3 - otpUser.attempt}`,
-            });
-          });
-
-          return;
-        }
-
-        const verifyOtp = otpData.filter((ele) => ele.email != otpUser.email);
-
-        fs.writeFile("otp.json", JSON.stringify(verifyOtp), (err) => {
-          if (err) {
-            return res.status(500).json({
-              success: false,
-              message: "error occured while deleting otp",
-            });
-          }
-
-          const payload = {
-            name: user.name,
-            email: user.email,
-            id: user.id,
-          };
-
-          const accessToken = generateAccessToken(
-            payload,
-            process.env.ACCESS_KEY as string,
-          );
-
-          const refreshPayload = {
-            id: user.id,
-          };
-
-          const refreshToken = generateRefreshToken(
-            refreshPayload,
-            process.env.REFRESH_KEY as string,
-          );
-
-          res.cookie("accessToken", accessToken, {
-            httpOnly: true,
-          });
-
-          res.cookie("refreshToken", refreshToken, {
-            httpOnly: true,
-          });
-
-          return res.status(200).json({
-            success: true,
-            message: "otp verified success",
-          });
-        });
+    const user = await userRepo.findOne({
+      where: {
+        email,
+      },
+    });
+    // console.log(user)
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "no user found register first",
       });
+    }
+
+    let optCheck = await otpRepo.findOne({
+      where: {
+        user: {
+          id: user.id,
+        },
+      },
+    });
+    // console.log("check otp",optCheck)
+    if (!optCheck) {
+      return res.status(401).json({
+        success: false,
+        message: "no otp found of provided user",
+      });
+    }
+    let currTime = new Date();
+    let expTime = new Date(optCheck.expiredAt.getTime());
+    if (currTime > expTime) {
+      return res.status(401).json({
+        success: false,
+        message: "otp is expired generate new otp",
+      });
+    }
+
+    if (optCheck.attempt >= 3) {
+      return res.status(401).json({
+        success: false,
+        message: "otp attempt exceed generate new otp",
+      });
+    }
+    if (optCheck.otp != otp) {
+      optCheck.attempt += 1;
+      console.log(optCheck.attempt);
+      await otpRepo.save(optCheck);
+      return res.status(401).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    await otpRepo.remove(optCheck);
+    const payload = {
+      name: user.name,
+      email: user.email,
+      id: user.id,
+    };
+
+    const accessToken = generateAccessToken(
+      payload,
+      process.env.ACCESS_KEY as string,
+    );
+
+    const refreshPayload = {
+      id: user.id,
+    };
+
+    const refreshToken = generateRefreshToken(
+      refreshPayload,
+      process.env.REFRESH_KEY as string,
+    );
+
+    res.cookie("accessToken", accessToken, {
+      httpOnly: true,
+    });
+
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "otp verified success",
     });
   } catch (error: unknown) {
     if (error instanceof Error) {
@@ -561,11 +480,11 @@ export const verifyOtp = (req: Request, res: Response) => {
 
 export const updateData = async (req: RequestWithUserRole, res: Response) => {
   try {
-    let resData: reqData[] = [];
-    const bodyData = req.body;
     let { name, age, email, password, place, city } = req.body;
     const tokenId: decode | undefined = req.user;
     const author_id: string | undefined = tokenId?.id;
+    // console.log(tokenId)
+    // console.log(author_id)
 
     if (!author_id) {
       return res.status(401).json({
@@ -584,20 +503,29 @@ export const updateData = async (req: RequestWithUserRole, res: Response) => {
         message: "give at least one field to update",
       });
     }
-    name = name?.trim();
+    interface update {
+      name?: string;
+      age?: number;
+      place?: string;
+      city?: string;
+    }
+    let updateData: update = {};
     if (name !== undefined) {
-      if (!name) {
+      if (typeof city != "string") {
         return res.status(400).json({
           success: false,
-          message: "name is required",
+          message: "only string are allowed in city",
         });
       }
+      name = name?.trim();
+
       if (!stringRegex.test(name)) {
         return res.status(400).json({
           success: false,
           message: "only letter are allowed in name",
         });
       }
+      updateData.name = name;
     }
 
     if (age !== undefined) {
@@ -614,19 +542,26 @@ export const updateData = async (req: RequestWithUserRole, res: Response) => {
           message: "age can only  be between 1 and 150",
         });
       }
+      updateData.age = age;
     }
 
-    city = city?.trim();
     if (city !== undefined) {
+      if (typeof city != "string") {
+        return res.status(400).json({
+          success: false,
+          message: "only string are allowed in city",
+        });
+      }
+      city = city?.trim();
       if (!stringRegex.test(city)) {
         return res.status(400).json({
           success: false,
           message: "only letter are allowed in city",
         });
       }
+      updateData.city = city;
     }
 
-    place = place?.trim();
     if (place !== undefined) {
       if (!stringRegex.test(place)) {
         return res.status(400).json({
@@ -634,6 +569,8 @@ export const updateData = async (req: RequestWithUserRole, res: Response) => {
           message: "only letter are allowed in place",
         });
       }
+      place = place?.trim();
+      updateData.place = place;
     }
     email = email?.trim().toLowerCase();
     if (email != undefined) {
@@ -648,45 +585,27 @@ export const updateData = async (req: RequestWithUserRole, res: Response) => {
         message: "password cannot be change",
       });
     }
+    console.log(updateData);
+    let user = await userRepo.findOne({
+      where: {
+        id: author_id,
+      },
+    });
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "no user found from your token login first",
+      });
+    }
 
-    fs.readFile("data.json", "utf-8", (err, data) => {
-      if (err) {
-        return res.status(500).json({
-          success: false,
-          message: err.message || "error occurred at writing file",
-        });
-      }
-      if (data) {
-        resData = JSON.parse(data);
-        const item: number = resData.findIndex(
-          (ele: reqData) => ele.id == author_id,
-        );
-        if (item != -1) {
-          resData[item] = { ...resData[item], ...bodyData };
-          fs.writeFile("data.json", JSON.stringify(resData), (err) => {
-            if (err) {
-              return res.status(500).json({
-                success: false,
-                message: err.message || "error occurred at writing file",
-              });
-            }
-            return res.status(200).json({
-              success: true,
-              message: "data updated successfully",
-            });
-          });
-        } else {
-          return res.status(404).json({
-            success: false,
-            message: "No data found with given id. enter the correct id",
-          });
-        }
-      } else {
-        return res.status(404).json({
-          success: false,
-          message: "no data found insert some data to update",
-        });
-      }
+    let finalData = { ...user, ...updateData };
+    console.log(finalData);
+
+    let result = await userRepo.save(finalData);
+    console.log(result);
+    return res.status(201).json({
+      success: true,
+      message: "user data updated success",
     });
   } catch (error: unknown) {
     if (error instanceof Error) {
@@ -698,7 +617,7 @@ export const updateData = async (req: RequestWithUserRole, res: Response) => {
   }
 };
 
-export const deleteData = (req: RequestWithUserRole, res: Response) => {
+export const deleteData = async (req: RequestWithUserRole, res: Response) => {
   try {
     const tokenId: decode | undefined = req.user;
     const author_id: string | undefined = tokenId?.id;
@@ -708,52 +627,39 @@ export const deleteData = (req: RequestWithUserRole, res: Response) => {
         message: "no author id found",
       });
     }
-    fs.readFile("data.json", "utf-8", (err, data) => {
-      if (err) {
-        return res.status(500).json({
-          success: false,
-          message: err.message || "error occurred at writing file",
-        });
-      }
-      if (data) {
-        const result = JSON.parse(data);
-        const check = result.some((ele: reqData) => ele.id == author_id);
-        if (!check) {
-          return res.status(404).json({
-            success: false,
-            message: "No user found with given id. Give correct id",
-          });
-        }
-        const duplicate = result.filter((ele: reqData) => ele.id !== author_id);
-        fs.writeFile("data.json", JSON.stringify(duplicate), (err) => {
-          if (err) {
-            return res.status(500).json({
-              success: false,
-              message: err.message || "error occurred at writing file",
-            });
-          }
 
-          res.clearCookie("accessToken", {
-            path: "/",
-            httpOnly: true,
-            secure: true,
-          });
-          res.clearCookie("refreshToken", {
-            path: "/",
-            httpOnly: true,
-            secure: true,
-          });
-          return res.status(200).json({
-            success: true,
-            message: "data deleted",
-          });
-        });
-      } else {
-        return res.status(404).json({
-          success: false,
-          message: "no found in db to delete",
-        });
-      }
+    let user = await userRepo.findOne({
+      where: {
+        id: author_id,
+      },
+    });
+    console.log(user);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "no user found from your token login first",
+      });
+    }
+    // let posts=await blogRepo.findOne({
+    //   where:{
+    //     author:{
+    //       id:user.id
+    //     }
+    //   }
+    // })
+    // if(posts){
+    //   return res.status(400).json({
+    //     success:false,
+    //     message:"you cannot delete your id beacause your blog exist"
+    //   })
+    // }
+    await userRepo.delete(user.id);
+    res.clearCookie("accessToken");
+
+    res.clearCookie("refreshToken");
+    return res.status(200).json({
+      success: true,
+      message: "User deleted successfully",
     });
   } catch (error: unknown) {
     if (error instanceof Error) {

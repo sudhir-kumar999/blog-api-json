@@ -1,18 +1,32 @@
 /* eslint-disable prefer-const */
 import type { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid";
-import fs from "fs";
+import { Blog } from "../entity/Blog";
+import { AppDataSource } from "../config/data-source";
+import { User } from "../entity/User";
 
+// interface reqData {
+//   id: string;
+//   name: string;
+//   age: number;
+//   email: string;
+//   password: string;
+//   place: string;
+//   city: string;
+//   otp?: string;
+//   otpVerified: boolean;
+// }
 interface blogType {
   post_id: string;
   title: string;
   content: string;
   Meta_tag: string;
-  author_id: string;
+  author: User;
   category: string;
   tags: string[];
   status: string;
 }
+
 interface updateBlog {
   post_id?: string;
   title?: string;
@@ -32,13 +46,16 @@ interface decode {
   exp?: number;
 }
 
+const blogRepo = AppDataSource.getRepository(Blog);
+const userRepo = AppDataSource.getRepository(User);
+
 const stringrgx = /^[A-Za-z ]+$/;
 const contentrgx = /^[A-Za-z0-9 ]+$/;
 interface RequestWithUserRole extends Request {
   user?: decode;
 }
 
-export const getPost = (req: Request, res: Response) => {
+export const getPost = async (req: Request, res: Response) => {
   try {
     const limit: number = Number(req.query.limit);
     const skip: number = Number(req.query.skip);
@@ -57,21 +74,19 @@ export const getPost = (req: Request, res: Response) => {
     }
     const offset: number = limit * skip;
     const last: number = skip * limit + limit;
-    let sendData: blogType[] = [];
-    fs.readFile("blog.json", "utf-8", (err, data) => {
-      if (!err && data) {
-        sendData = JSON.parse(data);
-        const pageData: blogType[] = sendData.slice(offset, last);
-        return res.status(200).json({
-          success: true,
-          message: "Data fetched successfully",
-          data: pageData,
-        });
-      }
+    let data = await blogRepo.find();
+    console.log(data);
+    if (data.length == 0) {
       return res.status(404).json({
         success: false,
         message: "No data found in DB",
       });
+    }
+    let sendData = data.slice(offset, last);
+    return res.status(200).json({
+      success: true,
+      message: "Data fetched successfully",
+      data: sendData,
     });
   } catch (error: unknown) {
     if (error instanceof Error) {
@@ -83,7 +98,7 @@ export const getPost = (req: Request, res: Response) => {
   }
 };
 
-export const addPost = (req: RequestWithUserRole, res: Response) => {
+export const addPost = async (req: RequestWithUserRole, res: Response) => {
   try {
     const bodyData: blogType = req.body;
     let { title, meta_tag, content, category, tags, status } = req.body;
@@ -195,27 +210,33 @@ export const addPost = (req: RequestWithUserRole, res: Response) => {
       });
     }
     const id: string = uuidv4();
-    bodyData.author_id = userId;
     bodyData.post_id = id;
+    console.log(bodyData);
 
-    fs.readFile("blog.json", "utf-8", (err, data) => {
-      let readData: blogType[] = [];
-      if (!err && data) {
-        readData = JSON.parse(data);
-      }
-      readData.push(bodyData);
-      fs.writeFile("blog.json", JSON.stringify(readData), (err) => {
-        if (err) {
-          return res.status(500).json({
-            success: false,
-            message: "Error occurred while writing file",
-          });
-        }
-        return res.status(201).json({
-          success: true,
-          message: "Post added successfully",
-        });
+    let user = await userRepo.findOne({
+      where: {
+        id: userId,
+      },
+    });
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "no user found with your id create an id",
       });
+    }
+    console.log(user);
+    bodyData.author = user;
+    let result = await blogRepo.create(bodyData);
+    if (!result) {
+      return res.status(400).json({
+        success: false,
+        message: "data is not saved",
+      });
+    }
+    await blogRepo.save(result);
+    return res.status(201).json({
+      success: false,
+      message: "Blog post created successfully",
     });
   } catch (error: unknown) {
     if (error instanceof Error) {
@@ -227,7 +248,7 @@ export const addPost = (req: RequestWithUserRole, res: Response) => {
   }
 };
 
-export const editPost = (req: RequestWithUserRole, res: Response) => {
+export const editPost = async (req: RequestWithUserRole, res: Response) => {
   try {
     const tokenId: decode | undefined = req.user;
     const author_id: string = String(tokenId?.id);
@@ -248,10 +269,10 @@ export const editPost = (req: RequestWithUserRole, res: Response) => {
       });
     }
 
-    title = title?.trim();
-    meta_tag = meta_tag?.trim();
-    content = content?.trim();
-    category = category?.trim();
+    // title = title?.trim();
+    // meta_tag = meta_tag?.trim();
+    // content = content?.trim();
+    // category = category?.trim();
 
     if (bodyData.post_id != undefined || bodyData.author_id != undefined) {
       return res.status(400).json({
@@ -266,6 +287,15 @@ export const editPost = (req: RequestWithUserRole, res: Response) => {
       });
     }
 
+    interface blog2 {
+      title?: string;
+      meta_tag?: string;
+      content?: string;
+      category?: string;
+      tags?: string[];
+      status?: string;
+    }
+    let updateData: blog2 = {};
     if (status != undefined) {
       if (status !== "pending" && status !== "published") {
         return res.status(400).json({
@@ -282,10 +312,12 @@ export const editPost = (req: RequestWithUserRole, res: Response) => {
           message: "title must be string",
         });
       }
-      if (!title) {
+      title = title?.trim();
+      updateData.title = title;
+      if (title.length == 0) {
         return res.status(400).json({
           success: false,
-          message: "title is required",
+          message: "title is required cannot empty",
         });
       }
     }
@@ -297,8 +329,9 @@ export const editPost = (req: RequestWithUserRole, res: Response) => {
           message: "content must be string ",
         });
       }
-
-      if (!content) {
+      content = content?.trim();
+      updateData.content = content;
+      if (content.length == 0) {
         return res.status(400).json({
           success: false,
           message: "content is required",
@@ -313,7 +346,9 @@ export const editPost = (req: RequestWithUserRole, res: Response) => {
           message: "title must be string",
         });
       }
-      if (!meta_tag) {
+      meta_tag = meta_tag?.trim();
+      updateData.meta_tag = meta_tag;
+      if (meta_tag.length == 0) {
         return res.status(400).json({
           success: false,
           message: "meta_tag is required",
@@ -328,7 +363,8 @@ export const editPost = (req: RequestWithUserRole, res: Response) => {
           message: "category must be string",
         });
       }
-
+      category = category?.trim();
+      updateData.category = category;
       if (!category) {
         return res.status(400).json({
           success: false,
@@ -344,7 +380,7 @@ export const editPost = (req: RequestWithUserRole, res: Response) => {
           message: "tags can only be an array",
         });
       }
-
+      updateData.tags = tags;
       if (tags.length === 0) {
         return res.status(401).json({
           success: false,
@@ -353,47 +389,39 @@ export const editPost = (req: RequestWithUserRole, res: Response) => {
       }
     }
 
-    fs.readFile("blog.json", "utf-8", (err, data) => {
-      if (!err && data) {
-        const readData: updateBlog[] = JSON.parse(data);
-        const filterData: updateBlog[] = readData.filter(
-          (ele) => ele.author_id == author_id,
-        );
-        if (filterData.length == 0) {
-          return res.status(404).json({
-            success: false,
-            message: "No author found with provided author_id",
-          });
-        }
-        const filterBlog: updateBlog[] = filterData.filter(
-          (ele) => ele.post_id == blog_id,
-        );
-        if (filterBlog.length == 0) {
-          return res.status(404).json({
-            success: false,
-            message: "no blog found with the provided blog_id",
-          });
-        }
-        const index = readData.findIndex((ele) => ele.post_id == blog_id);
-        readData[index] = { ...readData[index], ...bodyData };
-
-        fs.writeFile("blog.json", JSON.stringify(readData), (err) => {
-          if (err) {
-            return res.status(500).json({
-              success: false,
-              message: "Error while writing data",
-            });
-          }
-        });
-        return res.status(200).json({
-          success: true,
-          message: "blog with the provided id updated successfully",
-        });
-      }
-      return res.status(404).json({
+    let user = await userRepo.findOne({
+      where: {
+        id: author_id,
+      },
+    });
+    // console.log(user)
+    if (!user) {
+      return res.status(401).json({
         success: false,
-        message: "No data found inside DB",
+        message: "no user found with your id create an id",
       });
+    }
+
+    let post = await blogRepo.findOne({
+      where: {
+        id: blog_id,
+      },
+    });
+    // console.log(post)
+    if (!post) {
+      return res.status(401).json({
+        success: false,
+        message: "no blod found with your id create an blog",
+      });
+    }
+    // console.log(updateData)
+    let newUpdate = { ...post, ...updateData };
+    let result = await blogRepo.create(newUpdate);
+    await blogRepo.save(result);
+
+    return res.status(200).json({
+      success: true,
+      message: "blog post updated successsfully",
     });
   } catch (error: unknown) {
     if (error instanceof Error) {
@@ -405,7 +433,7 @@ export const editPost = (req: RequestWithUserRole, res: Response) => {
   }
 };
 
-export const deletePost = (req: RequestWithUserRole, res: Response) => {
+export const deletePost = async (req: RequestWithUserRole, res: Response) => {
   try {
     const tokenId: decode | undefined = req.user;
     const author_id: string | undefined = tokenId?.id;
@@ -416,43 +444,36 @@ export const deletePost = (req: RequestWithUserRole, res: Response) => {
         message: "blog_id is required",
       });
     }
-    let readData: blogType[] = [];
-    fs.readFile("blog.json", "utf-8", (err, data) => {
-      if (!err && data) {
-        readData = JSON.parse(data);
+    let user = await userRepo.findOne({
+      where: {
+        id: author_id,
+      },
+    });
+    // console.log(user);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "no user found login first",
+      });
+    }
 
-        const blog = readData.find((ele) => ele.post_id === blog_id);
-
-        if (!blog) {
-          return res.status(404).json({
-            success: false,
-            message: "Blog not found",
-          });
-        }
-
-        if (blog.author_id !== author_id) {
-          return res.status(403).json({
-            success: false,
-            message: "you are not allowed to delete blog",
-          });
-        }
-
-        const newData: blogType[] = readData.filter(
-          (ele) => ele.post_id != blog_id,
-        );
-        fs.writeFile("blog.json", JSON.stringify(newData), (err) => {
-          if (err) {
-            return res.status(500).json({
-              success: false,
-              message: "Error while writing file",
-            });
-          }
-        });
-        return res.status(200).json({
-          success: true,
-          message: "data deleted successfully",
-        });
+    const blog=await blogRepo.findOne({
+      where:{
+        id:blog_id
       }
+    })
+
+    console.log(blog)
+    if(!blog){
+      return res.status(400).json({
+        success:false,
+        message:"no blog found with given  blog id"
+      })
+    }
+    await blogRepo.delete(blog_id)
+    return res.status(200).json({
+      success: true,
+      message: "blog deleted successfully",
     });
   } catch (error: unknown) {
     if (error instanceof Error) {
@@ -464,7 +485,7 @@ export const deletePost = (req: RequestWithUserRole, res: Response) => {
   }
 };
 
-export const getPostByUser = (req: RequestWithUserRole, res: Response) => {
+export const getPostByUser = async(req: RequestWithUserRole, res: Response) => {
   try {
     const tokenId: decode | undefined = req.user;
     const author_id: string = String(tokenId?.id);
@@ -474,28 +495,38 @@ export const getPostByUser = (req: RequestWithUserRole, res: Response) => {
         message: "please provide author id",
       });
     }
-    fs.readFile("blog.json", "utf-8", (err, data) => {
-      if (!err && data) {
-        const readData: blogType[] = JSON.parse(data);
-        const filterData = readData.filter((ele) => ele.author_id == author_id);
-        if (filterData.length == 0) {
-          return res.status(404).json({
-            success: false,
-            message: "no data found with given author id",
-          });
-        }
-        return res.status(200).json({
-          success: true,
-          message: "Data fetched successfully by author_id",
-          data: filterData,
-        });
-      }
-      return res.status(404).json({
-        success: false,
-        message: "no data found inside DB",
-      });
+    let user = await userRepo.findOne({
+      where: {
+        id: author_id,
+      },
     });
-  } catch (error: unknown) {
+    // console.log(user);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "no user found login first",
+      });
+    }
+    const posts=await blogRepo.findOne({
+      where:{
+        author:{
+        id:user.id
+        }
+      }
+    })
+    console.log(posts)
+    if(!posts){
+      return res.status(404).json({
+        success:false,
+        message:"no blog post found"
+      })
+    }
+    return res.status(200).json({
+      success:true,
+      message:"blog posts found",
+      data:posts
+    })
+      } catch (error: unknown) {
     if (error instanceof Error) {
       return res.status(500).json({
         success: false,

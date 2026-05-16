@@ -1,8 +1,8 @@
 import express from "express";
-import { deleteData, getData, loginController, postData, updateData, verifyOtp } from "../controller/register.ts";
-import { limiter } from "../middleware/rateMiddleware.ts";
-import { checkLogin } from "../middleware/loginMiddleware.ts";
-import { twoFactor } from "../middleware/twoFactor.ts";
+import { deleteData, getData, loginController, postData, updateData, verifyOtp } from "../controller/register";
+import { limiter } from "../middleware/rateMiddleware";
+import { checkLogin } from "../middleware/loginMiddleware";
+import { twoFactor } from "../middleware/twoFactor";
 const router=express.Router();
 
 router.get("/getData",checkLogin,getData);

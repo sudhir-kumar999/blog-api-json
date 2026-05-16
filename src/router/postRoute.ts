@@ -1,8 +1,8 @@
 import express from "express";
-import { addPost, deletePost, editPost, getPost, getPostByUser } from "../controller/postController.ts";
-import { limiter } from "../middleware/rateMiddleware.ts";
-import { checkLogin } from "../middleware/loginMiddleware.ts";
-import { twoFactor } from "../middleware/twoFactor.ts";
+import { addPost, deletePost, editPost, getPost, getPostByUser } from "../controller/postController";
+import { limiter } from "../middleware/rateMiddleware";
+import { checkLogin } from "../middleware/loginMiddleware";
+import { twoFactor } from "../middleware/twoFactor";
 const postRoutes=express.Router();
 
 postRoutes.get("/allData",getPost);
