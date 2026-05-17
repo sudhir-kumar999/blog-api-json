@@ -5,7 +5,6 @@
   "main": "index.ts",
   "scripts": {
     "dev": "cross-env NODE_ENV=local nodemon index.ts",
- 
     "stage": "cross-env NODE_ENV=stage nodemon index.ts",
     "build":"tsc",
     "prod": "cross-env NODE_ENV=prod node dist/index.js",

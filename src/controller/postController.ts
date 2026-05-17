@@ -100,6 +100,7 @@ export const getPost = async (req: Request, res: Response) => {
 
 export const addPost = async (req: RequestWithUserRole, res: Response) => {
   try {
+    console.log("run post ")
     const bodyData: blogType = req.body;
     let { title, meta_tag, content, category, tags, status } = req.body;
     const tokenId: decode | undefined = req.user;
@@ -233,6 +234,7 @@ export const addPost = async (req: RequestWithUserRole, res: Response) => {
         message: "data is not saved",
       });
     }
+    console.log("result",result)
     await blogRepo.save(result);
     return res.status(201).json({
       success: false,

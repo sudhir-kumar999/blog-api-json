@@ -32,6 +32,9 @@ export class User {
 
   @Column()
   city!: string;
+  
+  @Column({ default: false })
+  otpVerified!: boolean;
 
   @OneToMany(() => Blog, (blog) => blog.author)
   blogs!: Blog[];

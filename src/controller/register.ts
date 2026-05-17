@@ -434,6 +434,8 @@ export const verifyOtp = async (req: Request, res: Response) => {
         message: "Invalid OTP",
       });
     }
+    user.otpVerified= true;
+  await userRepo.save(user);
 
     await otpRepo.remove(optCheck);
     const payload = {
