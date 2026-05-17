@@ -47,6 +47,7 @@ export class Blog {
 
   @UpdateDateColumn()
   updatedAt!: Date;
+  
     @ManyToOne(() => User, (user) => user.blogs, {
         onDelete:"CASCADE"
     })
