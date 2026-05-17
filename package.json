@@ -6,12 +6,12 @@
   "scripts": {
     "dev": "cross-env NODE_ENV=local nodemon index.ts",
     "stage": "cross-env NODE_ENV=stage nodemon index.ts",
-    "build":"tsc",
+    "build": "tsc",
     "prod": "cross-env NODE_ENV=prod node dist/index.js",
     "typeorm": "typeorm-ts-node-commonjs -d src/config/data-source.ts",
-  "migration:generate": "npm run typeorm migration:generate src/migration/migration",
-  "migration:run": "npm run typeorm migration:run",
-  "migration:revert": "npm run typeorm migration:revert",
+    "migration:generate": "npm run typeorm migration:generate src/migration/migration",
+    "migration:run": "npm run typeorm migration:run",
+    "migration:revert": "npm run typeorm migration:revert",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "nodemonConfig": {
@@ -53,6 +53,7 @@
     "eslint": "^10.3.0",
     "globals": "^17.6.0",
     "i": "^0.3.7",
+    "jest": "^30.4.2",
     "jiti": "^2.6.1",
     "nodemon": "^3.1.14",
     "npm": "^11.13.0",
