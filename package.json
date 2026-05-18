@@ -24,8 +24,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@babel/preset-env": "^7.29.5",
     "@typescript-eslint/eslint-plugin": "^8.59.2",
     "@typescript-eslint/parser": "^8.59.2",
+    "babel-jest": "^30.4.1",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
     "cross-env": "^10.1.0",
