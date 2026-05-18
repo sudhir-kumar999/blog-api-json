@@ -485,8 +485,6 @@ export const updateData = async (req: RequestWithUserRole, res: Response) => {
     let { name, age, email, password, place, city } = req.body;
     const tokenId: decode | undefined = req.user;
     const author_id: string | undefined = tokenId?.id;
-    // console.log(tokenId)
-    // console.log(author_id)
 
     if (!author_id) {
       return res.status(401).json({
@@ -642,19 +640,6 @@ export const deleteData = async (req: RequestWithUserRole, res: Response) => {
         message: "no user found from your token login first",
       });
     }
-    // let posts=await blogRepo.findOne({
-    //   where:{
-    //     author:{
-    //       id:user.id
-    //     }
-    //   }
-    // })
-    // if(posts){
-    //   return res.status(400).json({
-    //     success:false,
-    //     message:"you cannot delete your id beacause your blog exist"
-    //   })
-    // }
     await userRepo.delete(user.id);
     res.clearCookie("accessToken");
 

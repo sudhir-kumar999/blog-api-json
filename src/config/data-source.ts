@@ -20,11 +20,12 @@ export const AppDataSource = new DataSource({
   port: Number(process.env.DB_PORT),
   username: process.env.DB_USERNAME,
   password: process.env.DB_PASSWORD,
-  //    fro local
+  //    for local
   //   database: "local_blog_db",
   database: process.env.DB_DATABASE,
   synchronize: true,
   logging: false,
+  ssl:true,
 
   entities: [User, Blog, Otp],
     migrations: [__dirname + "/../migration/*.ts"],
