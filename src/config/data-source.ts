@@ -27,6 +27,5 @@ export const AppDataSource = new DataSource({
   logging: false,
 
   entities: [User, Blog, Otp],
-  //   migrations: ["src/migration/*.ts"],
-  migrations: [__dirname + "/../migration/*.ts"],
+    migrations: [__dirname + "/../migration/*.ts"],
 });
