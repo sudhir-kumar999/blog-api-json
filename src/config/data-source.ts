@@ -20,7 +20,7 @@ export const AppDataSource = new DataSource({
   port: Number(process.env.DB_PORT),
   // username: process.env.DB_USERNAME,
   // password: process.env.DB_PASSWORD,
-  DATABASE_URL:process.env.DATABASE_URL,
+  url:process.env.DATABASE_URL,
   //    for local
   //   database: "local_blog_db",
   // database: process.env.DB_DATABASE,
