@@ -18,14 +18,17 @@ export const AppDataSource = new DataSource({
   //    for local
   //   host: "localhost",
   port: Number(process.env.DB_PORT),
-  username: process.env.DB_USERNAME,
-  password: process.env.DB_PASSWORD,
+  // username: process.env.DB_USERNAME,
+  // password: process.env.DB_PASSWORD,
+  DATABASE_URL:process.env.DATABASE_URL,
   //    for local
   //   database: "local_blog_db",
-  database: process.env.DB_DATABASE,
+  // database: process.env.DB_DATABASE,
   synchronize: true,
   logging: false,
-  ssl:true,
+  ssl:{
+    rejectUnauthorized:false
+  },
 
   entities: [User, Blog, Otp],
     migrations: [__dirname + "/../migration/*.ts"],
